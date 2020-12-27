@@ -1,38 +1,67 @@
+const http = require("http");
 const express = require("express");
 const socketio = require("socket.io");
-const http = require("http");
 const cors = require("cors");
 
-const PORT = process.env.PORT || 5000;
-const router = require("./router");
+const { addUser, removeUser, getUser, getUsersInRoom } = require("./users");
 
+const router = require("./router");
+const PORT = 5000;
 const app = express();
 const server = http.createServer(app);
-const io = socketio(server, { cors: { origin: "*" } });
-
-/**
- * Setting up the socket conncetion.
- * Establishes a connection with socket.io
- */
-io.on("connection", (socket) => {
-  console.log("We have a new Connection!!!");
-
-  // listens for the join event from client
-  // this also has acces to the data coming from the
-  // 'join' event.
-  socket.on("join", ({ name, room }) => {
-    console.log(name, room);
-  });
-
-  // listens for individual connection on 'disconnect'
-  socket.on("disconnect", () => {
-    console.log("User has left!!!");
-  });
-});
+const io = socketio(server, { cors: "*" });
 
 app.use(cors());
 app.use(router);
 
-server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+io.on("connect", (socket) => {
+  socket.on("join", ({ name, room }, callback) => {
+    const { error, user } = addUser({ id: socket.id, name, room });
+
+    if (error) return callback(error);
+
+    socket.join(user.room);
+
+    socket.emit("message", {
+      user: "admin",
+      text: `${user.name}, welcome to room ${user.room}.`,
+    });
+    socket.broadcast
+      .to(user.room)
+      .emit("message", { user: "admin", text: `${user.name} has joined!` });
+
+    io.to(user.room).emit("roomData", {
+      room: user.room,
+      users: getUsersInRoom(user.room),
+    });
+
+    callback();
+  });
+
+  socket.on("sendMessage", (message, callback) => {
+    const user = getUser(socket.id);
+
+    io.to(user.room).emit("message", { user: user.name, text: message });
+
+    callback();
+  });
+
+  socket.on("disconnection", () => {
+    const user = removeUser(socket.id);
+
+    if (user) {
+      io.to(user.room).emit("message", {
+        user: "Admin",
+        text: `${user.name} has left.`,
+      });
+      io.to(user.room).emit("roomData", {
+        room: user.room,
+        users: getUsersInRoom(user.room),
+      });
+    }
+  });
 });
+
+server.listen(process.env.PORT || 5000, () =>
+  console.log(`Server listening on port ${PORT}.`)
+);

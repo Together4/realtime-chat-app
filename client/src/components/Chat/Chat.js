@@ -1,36 +1,70 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import queryString from "query-string";
 import io from "socket.io-client";
+
+import TextContainer from "../TextContainer/TextContainer";
+import Messages from "../Messages/Messages";
+import InfoBar from "../InfoBar/InfoBar";
+import Input from "../Input/Input";
+
 import "./Chat.css";
+
+const ENDPOINT = "localhost:5000";
 
 let socket;
 
 const Chat = ({ location }) => {
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
-  const ENDPOINT = "localhost:5000";
+  const [users, setUsers] = useState("");
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState([]);
 
-  /**
-   * Retrieves the users params
-   */
   useEffect(() => {
-    // gets the url params from the link.
     const { name, room } = queryString.parse(location.search);
 
-    // setting up socket connection on client side.
     socket = io(ENDPOINT);
 
-    setName(name);
     setRoom(room);
+    setName(name);
 
-    // emits the join event, which is transfered to the server.
-    socket.emit("join", { name, room });
-  }, [ENDPOINT, location.search]);
+    socket.emit("join", { name, room }, (error) => {
+      if (error) {
+        alert(error);
+      }
+    });
+  }, [location.search]);
 
+  useEffect(() => {
+    socket.on("message", (message) => {
+      setMessages((messages) => [...messages, message]);
+    });
+
+    socket.on("roomData", ({ users }) => {
+      setUsers(users);
+    });
+  }, []);
+
+  const sendMessage = (event) => {
+    event.preventDefault();
+
+    if (message) {
+      socket.emit("sendMessage", message, () => setMessage(""));
+    }
+  };
+  console.log(messages);
   return (
-    <div>
-      <h1>{name}</h1>
-      <h2>{room}</h2>
+    <div className="outerContainer">
+      <div className="container">
+        <InfoBar room={room} />
+        <Messages messages={messages} name={name} />
+        <Input
+          message={message}
+          setMessage={setMessage}
+          sendMessage={sendMessage}
+        />
+      </div>
+      <TextContainer users={users} />
     </div>
   );
 };
